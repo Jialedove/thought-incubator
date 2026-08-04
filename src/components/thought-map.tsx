@@ -36,5 +36,5 @@ export function ThoughtMap({ nodes, edges, currentFocusNodeId, onFocusNode }: { 
     className: "rounded-xl border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 shadow-sm",
   }));
   const flowEdges = edges.filter((edge) => edge.sourceNodeId !== edge.targetNodeId).map((edge) => ({ id: edge.id, source: edge.sourceNodeId, target: edge.targetNodeId, label: edge.type, style: { stroke: "var(--accent)" }, labelStyle: { fontSize: 9, fill: "var(--muted)" } }));
-  return <div className="h-[440px] w-full overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper)]"><ReactFlow nodes={flowNodes} edges={flowEdges} fitView fitViewOptions={{ padding: 0.25 }} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_, node) => onFocusNode?.(node.id)}><Background color="#dfe3dd" gap={24} /><Controls showInteractive={false} /><MiniMap pannable zoomable /></ReactFlow></div>;
+  return <div className="h-[440px] w-full overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper)]"><ReactFlow nodes={flowNodes} edges={flowEdges} fitView fitViewOptions={{ padding: 0.25 }} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_, node) => onFocusNode?.(node.id)}><Background color="var(--line-strong)" gap={24} /><Controls showInteractive={false} /><MiniMap pannable zoomable /></ReactFlow></div>;
 }

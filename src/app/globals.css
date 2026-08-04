@@ -16,30 +16,34 @@
   --danger: #a34e4e;
   --danger-bg: #fff0ee;
   --danger-line: #e8b8b3;
+  --accepted-line: #c7decf;
+  --grid-line: rgba(27,30,28,.04);
   --ring: #6f9e85;
 }
 
 :root[data-theme="dark"] {
-  --paper: #171b18; --surface: #202621; --surface-raised: #252d27; --ink: #edf3ed;
+  color-scheme: dark;
+  --paper: #111512; --surface: #191e1b; --surface-raised: #222923; --ink: #edf3ed;
   --ink-soft: #d0dad2; --muted: #9aa89e; --line: #354139; --line-strong: #4a5a4d;
-  --accent: #9ac8a9; --accent-soft: #263d2d; --candidate: #e1ad6c; --candidate-bg: #3a2e1e;
-  --danger: #f0a09a; --danger-bg: #402524; --danger-line: #75443f; --ring: #9ac8a9;
+  --accent: #a8d9b5; --accent-soft: #20382a; --candidate: #e1ad6c; --candidate-bg: #3a2e1e;
+  --danger: #f0a09a; --danger-bg: #402524; --danger-line: #75443f; --accepted-line: #356044;
+  --grid-line: rgba(218,235,220,.055); --ring: #a8d9b5;
 }
 
 * { box-sizing: border-box; }
-html { background: var(--paper); }
+html { background: var(--paper); color-scheme: light; }
 body { margin: 0; color: var(--ink); background: var(--paper); font-family: Arial, "PingFang SC", "Hiragino Sans GB", sans-serif; }
 button, textarea, input, select { font: inherit; }
 button { cursor: pointer; }
 a { text-decoration: none; }
 
 .app-grid { display: grid; grid-template-columns: 230px minmax(420px, 1fr) 310px; min-height: 100vh; }
-.sidebar { border-right: 1px solid var(--line); background: rgba(251,251,248,.72); }
-.right-panel { border-left: 1px solid var(--line); background: rgba(251,251,248,.72); }
+.sidebar { border-right: 1px solid var(--line); background: var(--surface); }
+.right-panel { border-left: 1px solid var(--line); background: var(--surface); }
 .map-overlay { display: none; }
 .mobile-only { display: none; }
 .scrollbar { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
-.quiet-grid { background-image: linear-gradient(to right, rgba(27,30,28,.025) 1px, transparent 1px), linear-gradient(to bottom, rgba(27,30,28,.025) 1px, transparent 1px); background-size: 32px 32px; }
+.quiet-grid { background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px); background-size: 32px 32px; }
 
 @media (max-width: 1100px) {
   .app-grid { grid-template-columns: 210px minmax(0, 1fr); }
