@@ -12,31 +12,39 @@ export const thoughtSessions = sqliteTable("thought_sessions", {
 });
 export const thoughtNodes = sqliteTable("thought_nodes", {
   id: text("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
+  sessionId: text("session_id").notNull().references(() => thoughtSessions.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
   content: text("content").notNull(),
   author: text("author").notNull(),
   epistemicStatus: text("epistemic_status").notNull(),
   parentNodeId: text("parent_node_id"),
   sourceEventIds: text("source_event_ids").notNull(),
+  speechAct: text("speech_act"),
+  confirmable: integer("confirmable", { mode: "boolean" }).notNull().default(false),
+  provenanceNodeId: text("provenance_node_id"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 export const thoughtEdges = sqliteTable("thought_edges", {
   id: text("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
-  sourceNodeId: text("source_node_id").notNull(),
-  targetNodeId: text("target_node_id").notNull(),
+  sessionId: text("session_id").notNull().references(() => thoughtSessions.id, { onDelete: "cascade" }),
+  sourceNodeId: text("source_node_id").notNull().references(() => thoughtNodes.id, { onDelete: "cascade" }),
+  targetNodeId: text("target_node_id").notNull().references(() => thoughtNodes.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
   createdAt: integer("created_at").notNull(),
 });
 export const conversationEvents = sqliteTable("conversation_events", {
   id: text("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
+  sessionId: text("session_id").notNull().references(() => thoughtSessions.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
+  actor: text("actor").notNull().default("system"),
   content: text("content").notNull(),
   cognitiveFunction: text("cognitive_function"),
+  speechAct: text("speech_act"),
+  userAction: text("user_action"),
+  confirmable: integer("confirmable", { mode: "boolean" }).notNull().default(false),
   nodeIds: text("node_ids").notNull(),
+  metadata: text("metadata").notNull().default("{}"),
   createdAt: integer("created_at").notNull(),
 });
 export const providerConfigs = sqliteTable("provider_configs", {
@@ -46,7 +54,9 @@ export const providerConfigs = sqliteTable("provider_configs", {
   baseUrl: text("base_url"),
   modelId: text("model_id"),
   apiKeyCiphertext: text("api_key_ciphertext"),
+  apiKeyLast4: text("api_key_last4"),
   headers: text("headers").notNull(),
+  headersCiphertext: text("headers_ciphertext"),
   enabled: integer("enabled", { mode: "boolean" }).notNull(),
   isDefault: integer("is_default", { mode: "boolean" }).notNull(),
   createdAt: integer("created_at").notNull(),
@@ -55,7 +65,7 @@ export const providerConfigs = sqliteTable("provider_configs", {
 export const cognitiveFunctionModels = sqliteTable("cognitive_function_models", {
   id: text("id").primaryKey(),
   cognitiveFunction: text("cognitive_function").notNull().unique(),
-  providerId: text("provider_id"),
+  providerId: text("provider_id").references(() => providerConfigs.id, { onDelete: "set null" }),
   modelId: text("model_id"),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -63,4 +73,11 @@ export const appSettings = sqliteTable("app_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull(),
+});
+export const interventionRuns = sqliteTable("intervention_runs", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => thoughtSessions.id, { onDelete: "cascade" }),
+  eventId: text("event_id"), providerId: text("provider_id"), modelId: text("model_id"),
+  mode: text("mode").notNull(), status: text("status").notNull(), errorMessage: text("error_message"),
+  startedAt: integer("started_at").notNull(), completedAt: integer("completed_at"),
 });

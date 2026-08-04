@@ -18,8 +18,18 @@ export const db = drizzle(sqlite, { schema });
 let migrated = false;
 export function ensureDatabase() {
   if (migrated) return;
-  const migration = fs.readFileSync(path.join(process.cwd(), "drizzle/0000_init.sql"), "utf8");
-  sqlite.exec(migration);
+  sqlite.exec("CREATE TABLE IF NOT EXISTS _app_migrations (name TEXT PRIMARY KEY NOT NULL, applied_at INTEGER NOT NULL)");
+  const migrations = fs.readdirSync(path.join(process.cwd(), "drizzle"))
+    .filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
+  for (const name of migrations) {
+    const applied = sqlite.prepare("SELECT 1 FROM _app_migrations WHERE name = ?").get(name);
+    if (applied) continue;
+    const migration = fs.readFileSync(path.join(process.cwd(), "drizzle", name), "utf8");
+    sqlite.transaction(() => {
+      sqlite.exec(migration);
+      sqlite.prepare("INSERT INTO _app_migrations (name, applied_at) VALUES (?, ?)").run(name, Date.now());
+    })();
+  }
   migrated = true;
 }
 

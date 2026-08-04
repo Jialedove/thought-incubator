@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-CN"><body>{children}</body></html>;
+  return <html lang="zh-CN"><head><script dangerouslySetInnerHTML={{ __html: "try { const t = localStorage.getItem('thought-incubator-theme') || 'system'; document.documentElement.dataset.theme = t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : t === 'system' ? 'light' : t; } catch {}" }} /></head><body>{children}</body></html>;
 }
