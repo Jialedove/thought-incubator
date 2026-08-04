@@ -1,0 +1,30 @@
+allowBuilds:
+  '@tailwindcss/oxide': true
+  better-sqlite3: true
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@ai-sdk/anthropic@4.0.29'
+  - '@ai-sdk/gateway@4.0.40'
+  - '@ai-sdk/google@4.0.33'
+  - '@ai-sdk/openai@4.0.29'
+  - '@ai-sdk/provider-utils@5.0.20'
+  - '@ai-sdk/provider@4.0.5'
+  - '@assistant-ui/core@0.3.5'
+  - '@assistant-ui/react@0.15.4'
+  - '@assistant-ui/store@0.3.3'
+  - '@next/env@16.3.0'
+  - '@next/eslint-plugin-next@16.3.0'
+  - '@next/swc-darwin-arm64@16.3.0'
+  - '@next/swc-darwin-x64@16.3.0'
+  - '@next/swc-linux-arm64-gnu@16.3.0'
+  - '@next/swc-linux-arm64-musl@16.3.0'
+  - '@next/swc-linux-x64-gnu@16.3.0'
+  - '@next/swc-linux-x64-musl@16.3.0'
+  - '@next/swc-win32-arm64-msvc@16.3.0'
+  - '@next/swc-win32-x64-msvc@16.3.0'
+  - ai@7.0.51
+  - assistant-cloud@0.1.38
+  - assistant-stream@0.3.33
+  - eslint-config-next@16.3.0
+  - next@16.3.0
+  - safe-content-frame@0.0.26
