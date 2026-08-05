@@ -33,7 +33,7 @@ export type SpeechAct = (typeof speechActs)[number];
 
 export const userMoveKinds = [
   "new_intuition", "answer_question", "clarify_concept", "revise_view", "give_example",
-  "request_challenge", "request_extension", "request_connection", "request_reformulation",
+  "request_example", "request_challenge", "request_extension", "request_connection", "request_reformulation",
   "request_multi_perspective", "switch_focus", "accept_candidate", "partially_accept",
   "correct_candidate", "reject_interpretation", "request_summary",
 ] as const;
@@ -64,8 +64,11 @@ export type ThoughtNode = {
   id: string; sessionId: string; type: ThoughtNodeType; content: string;
   author: Author; epistemicStatus: EpistemicStatus; parentNodeId: string | null;
   sourceEventIds: string[]; speechAct: SpeechAct | null; confirmable: boolean;
+  candidateReviewStatus: CandidateReviewStatus | null;
   provenanceNodeId: string | null; createdAt: number; updatedAt: number;
 };
+export const candidateReviewStatuses = ["pending", "accepted", "partial", "corrected", "rejected", "deferred"] as const;
+export type CandidateReviewStatus = (typeof candidateReviewStatuses)[number];
 export type ThoughtEdge = {
   id: string; sessionId: string; sourceNodeId: string; targetNodeId: string;
   type: ThoughtEdgeType; createdAt: number;
@@ -78,7 +81,7 @@ export type ConversationEvent = {
 };
 export type InterventionRun = {
   id: string; sessionId: string; eventId: string | null; providerId: string;
-  modelId: string | null; mode: "mock" | "real"; status: "running" | "completed" | "failed" | "aborted";
+  modelId: string | null; modelConfigId?: string | null; mode: "mock" | "real"; status: "running" | "completed" | "failed" | "aborted";
   errorMessage: string | null; startedAt: number; completedAt: number | null;
 };
 export type SessionBundle = {
@@ -103,9 +106,28 @@ export type InterventionResult = {
   suggestedPhase: ThoughtPhase; shouldWaitForUser: true;
 };
 export type ProviderKind = "openai" | "anthropic" | "google" | "openai-compatible" | "mock";
+export type ProviderCredentialStatus = "not_configured" | "configured" | "invalid" | "unreadable";
+export type ProviderTestStatus = "success" | "failed" | null;
+export type ModelSource = "discovered" | "manual";
+export type ModelConfig = {
+  id: string; providerId: string; modelId: string; displayName: string; enabled: boolean;
+  isDefault: boolean; source: ModelSource; capabilities: Record<string, boolean>;
+  createdAt: number; updatedAt: number;
+};
 export type SafeProviderConfig = {
   id: string; name: string; kind: ProviderKind; baseUrl: string | null;
   modelId: string | null; enabled: boolean; isDefault: boolean;
-  apiKeyMasked: string; headers: Record<string, string>;
+  apiKeyMasked: string; headers: Record<string, string>; credentialStatus: ProviderCredentialStatus;
+  lastTestedAt: number | null; lastTestStatus: ProviderTestStatus; lastTestErrorCode: string | null;
+  modelCount: number;
   createdAt: number; updatedAt: number;
 };
+export type ResolvedModel = {
+  modelConfig: ModelConfig; provider: SafeProviderConfig; mode: "mock" | "real";
+  readiness: { ok: boolean; code: string | null; message: string };
+};
+export type ProviderErrorCode =
+  | "VALIDATION_ERROR" | "PROVIDER_NOT_FOUND" | "PROVIDER_DISABLED" | "MODEL_NOT_FOUND"
+  | "MODEL_DISABLED" | "DEFAULT_MODEL_MISSING" | "CREDENTIAL_MISSING" | "CREDENTIAL_DECRYPT_FAILED"
+  | "CONNECTION_FAILED" | "MODEL_NOT_FOUND_REMOTE" | "REQUEST_ABORTED" | "INVALID_MODEL_OUTPUT"
+  | "DUPLICATE_MODEL" | "CANDIDATE_AMBIGUOUS";

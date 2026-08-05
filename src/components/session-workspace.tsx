@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, GitBranch, Loader2, Map as MapIcon, Menu, MessageCircle, MoreHorizontal, Sparkles, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isOpenQuestionResolved } from "@/domain/protocol";
 import type { CognitiveFunction, ConversationEvent, SessionBundle, ThoughtNode } from "@/domain/types";
 import { Button } from "@/components/ui/button";
 import { SessionNav } from "@/components/session-nav";
@@ -17,7 +18,7 @@ const nodeLabels: Record<ThoughtNode["type"], string> = { original_expression: "
 function formatTime(timestamp: number) { return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(timestamp); }
 function eventIsUser(event: ConversationEvent) { return event.actor === "user"; }
 
-function DecisionActions({ node, sessionId, onDone, onFollowUp }: { node: ThoughtNode; sessionId: string; onDone: (bundle: SessionBundle) => void; onFollowUp?: (text: string) => Promise<void> }) {
+function DecisionActions({ node, sessionId, onDone }: { node: ThoughtNode; sessionId: string; onDone: (bundle: SessionBundle) => void }) {
   const [content, setContent] = useState(node.content);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,7 +31,6 @@ function DecisionActions({ node, sessionId, onDone, onFollowUp }: { node: Though
       const data = await response.json() as { bundle?: SessionBundle; error?: string };
       if (!response.ok || !data.bundle) { setError(data.error ?? "状态更新失败"); return; }
       onDone(data.bundle);
-      if (note.trim() && action !== "accept" && action !== "candidate") await onFollowUp?.(note.trim());
     } finally { setBusy(false); }
   }
   return <div className="mt-4 space-y-2 border-t border-[var(--line)] pt-3">
@@ -41,20 +41,21 @@ function DecisionActions({ node, sessionId, onDone, onFollowUp }: { node: Though
   </div>;
 }
 
-function MessageCard({ event, node, sessionId, onDone, onFollowUp }: { event: ConversationEvent; node?: ThoughtNode; sessionId: string; onDone: (bundle: SessionBundle) => void; onFollowUp?: (text: string) => Promise<void> }) {
+function MessageCard({ event, node, sessionId, onDone }: { event: ConversationEvent; node?: ThoughtNode; sessionId: string; onDone: (bundle: SessionBundle) => void }) {
   const user = eventIsUser(event);
   const confirmable = Boolean(node?.confirmable && event.confirmable);
   return <div className={`flex ${user ? "justify-end" : "justify-start"}`}>
     <div className="max-w-[88%]">
       <div className="mb-1 flex items-center gap-2 px-1 text-[10px] text-[var(--muted)]"><span>{user ? "你" : functionNames[event.cognitiveFunction ?? "facilitate"]}</span><span>{formatTime(event.createdAt)}</span>{!user && <span className="rounded-full bg-[var(--candidate-bg)] px-1.5 py-0.5 text-[var(--candidate)]">{confirmable ? "候选表达" : node ? nodeLabels[node.type] : "介入"}</span>}</div>
       <div className={`rounded-2xl px-4 py-3 text-sm leading-7 ${user ? "rounded-tr-sm bg-[var(--ink)] text-[var(--paper)]" : "rounded-tl-sm border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink-soft)]"}`}>{event.content}</div>
-      {confirmable && node && <DecisionActions node={node} sessionId={sessionId} onDone={onDone} onFollowUp={onFollowUp} />}
+      {confirmable && node && <DecisionActions node={node} sessionId={sessionId} onDone={onDone} />}
     </div>
   </div>;
 }
 
-type StreamResult = { bundle: SessionBundle; mode: "mock" | "real"; providerId: string; modelId: string | null };
-type StreamEvent = { type: "start"; mode: "mock" | "real"; providerId: string; modelId: string | null } | { type: "delta"; value: string } | { type: "done"; result: StreamResult } | { type: "error"; error: string };
+type StreamResult = { bundle: SessionBundle; mode: "mock" | "real"; providerId: string; modelId: string | null; modelConfigId?: string | null };
+type StreamError = { code?: string; message?: string };
+type StreamEvent = { type: "start"; mode: "mock" | "real"; providerId: string; modelId: string | null; modelConfigId?: string } | { type: "delta"; value: string } | { type: "done"; result: StreamResult } | { type: "error"; error: string | StreamError };
 
 export function SessionWorkspace({ id }: { id: string }) {
   const router = useRouter();
@@ -67,7 +68,11 @@ export function SessionWorkspace({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [streamText, setStreamText] = useState("");
   const [pendingUser, setPendingUser] = useState<string | null>(null);
+  const [retryText, setRetryText] = useState<string | null>(null);
+  const [retryRequestId, setRetryRequestId] = useState<string | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<"mock" | "real" | "unknown">("unknown");
+  const [runtimeProvider, setRuntimeProvider] = useState("");
+  const [runtimeModel, setRuntimeModel] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
 
@@ -81,33 +86,38 @@ export function SessionWorkspace({ id }: { id: string }) {
 
   const nodeByEvent = useMemo(() => new Map(bundle?.nodes.flatMap((node) => node.sourceEventIds.map((eventId) => [eventId, node] as const)) ?? []), [bundle]);
   const accepted = bundle?.nodes.filter((node) => node.epistemicStatus === "user_accepted") ?? [];
-  const candidates = bundle?.nodes.filter((node) => node.confirmable && node.epistemicStatus === "ai_proposal") ?? [];
-  const openQuestions = bundle?.nodes.filter((node) => node.type === "open_question" && node.epistemicStatus !== "user_rejected") ?? [];
+  const candidates = bundle?.nodes.filter((node) => node.confirmable && node.epistemicStatus === "ai_proposal" && node.candidateReviewStatus === "pending") ?? [];
+  const openQuestions = bundle?.nodes.filter((node) => node.type === "open_question" && node.epistemicStatus !== "user_rejected" && !isOpenQuestionResolved(bundle, node.id)) ?? [];
 
-  async function send(messageText: string) {
+  async function send(messageText: string, existingRequestId?: string) {
     if (!messageText.trim() || isSending) return;
-    setIsSending(true); setError(""); setStreamText(""); setPendingUser(messageText);
+    const clientRequestId = existingRequestId ?? crypto.randomUUID();
+    setIsSending(true); setError(""); setStreamText(""); setPendingUser(messageText); setRetryText(null); setRetryRequestId(null);
     const controller = new AbortController(); abortRef.current = controller;
     try {
-      const response = await fetch(`/api/sessions/${id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: messageText, requestedFunction: requestedFunction || null }), signal: controller.signal });
+      const response = await fetch(`/api/sessions/${id}/messages`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ text: messageText, requestedFunction: requestedFunction || null, clientRequestId }), signal: controller.signal });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!response.ok || !contentType.includes("text/event-stream")) { const data = await response.json().catch(() => ({})) as { message?: string; error?: string; code?: string }; throw new Error(data.message ?? data.error ?? `请求失败${data.code ? `（${data.code}）` : ""}`); }
       if (!response.body) throw new Error("没有收到流式响应");
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = "";
+      const handleFrame = (frame: string) => {
+        const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+        if (!data) return;
+        const event = JSON.parse(data) as StreamEvent;
+        if (event.type === "start") { setRuntimeMode(event.mode); setRuntimeProvider(event.providerId); setRuntimeModel(event.modelId ?? ""); }
+        if (event.type === "delta") setStreamText((value) => value + event.value);
+        if (event.type === "error") throw new Error(typeof event.error === "string" ? event.error : event.error.message ?? event.error.code ?? "消息处理失败");
+        if (event.type === "done") { setBundle(event.result.bundle); setRuntimeMode(event.result.mode); setRuntimeProvider(event.result.providerId); setRuntimeModel(event.result.modelId ?? ""); setStreamText(""); }
+      };
       while (true) {
         const read = await reader.read(); if (read.done) break; buffer += decoder.decode(read.value, { stream: true });
-        const frames = buffer.split("\n\n"); buffer = frames.pop() ?? "";
-        for (const frame of frames) {
-          const line = frame.split("\n").find((value) => value.startsWith("data: ")); if (!line) continue;
-          const event = JSON.parse(line.slice(6)) as StreamEvent;
-          if (event.type === "start") setRuntimeMode(event.mode);
-          if (event.type === "delta") setStreamText((value) => value + event.value);
-          if (event.type === "error") throw new Error(event.error);
-          if (event.type === "done") { setBundle(event.result.bundle); setRuntimeMode(event.result.mode); setPendingUser(null); setStreamText(""); }
-        }
+        const frames = buffer.split(/\r?\n\r?\n/); buffer = frames.pop() ?? ""; frames.forEach(handleFrame);
       }
+      if (buffer.trim()) handleFrame(buffer);
     } catch (caught) {
-      if (caught instanceof DOMException && caught.name === "AbortError") { setError("已停止生成；你的表达已经保存，可以继续。 "); await load(); }
-      else { setError(caught instanceof Error ? caught.message : "这次介入没有完成"); await load().catch(() => undefined); }
-    } finally { abortRef.current = null; setIsSending(false); }
+      const message = caught instanceof DOMException && caught.name === "AbortError" ? "已停止生成；这次表达可以安全重试。" : caught instanceof Error ? caught.message : "这次介入没有完成";
+      setError(message); setRetryText(messageText); setRetryRequestId(clientRequestId); await load().catch(() => undefined);
+    } finally { abortRef.current = null; setIsSending(false); setPendingUser(null); }
   }
   function stop() { abortRef.current?.abort(); }
   async function archive() { const response = await fetch(`/api/sessions/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "archived" }) }); if (response.ok) router.push("/app"); else setError("归档失败"); }
@@ -118,6 +128,7 @@ export function SessionWorkspace({ id }: { id: string }) {
   if (error && !bundle) return <main className="flex min-h-screen items-center justify-center p-6 text-sm text-[var(--danger)]">{error}</main>;
   if (!bundle) return <main className="flex min-h-screen items-center justify-center text-sm text-[var(--muted)]"><Loader2 className="mr-2 animate-spin" size={16} />正在打开思想…</main>;
   const modeLabel = runtimeMode === "real" ? "真实模型" : runtimeMode === "mock" ? "本地 Mock" : "尚未生成";
+  const runtimeLabel = runtimeProvider && runtimeModel ? `${runtimeProvider} / ${runtimeModel}` : runtimeProvider || "未解析模型";
   const events = bundle.events.slice();
   return <div className="app-grid">
     <SessionNav open={showNav} onClose={() => setShowNav(false)} />
@@ -127,11 +138,11 @@ export function SessionWorkspace({ id }: { id: string }) {
         <div className="flex items-center gap-1"><Button size="icon" variant="ghost" onClick={() => setShowMap((value) => !value)} aria-label="切换思想地图"><MapIcon size={16} /></Button><Button size="icon" variant="ghost" onClick={() => setShowMenu((value) => !value)} aria-label="更多操作"><MoreHorizontal size={16} /></Button>{showMenu && <div className="absolute right-4 top-14 z-20 w-44 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-1 text-xs shadow-lg"><Link className="block rounded-lg px-3 py-2 hover:bg-[var(--accent-soft)]" href={`/api/sessions/${id}/export?format=json`}>导出 JSON</Link><button type="button" className="block w-full rounded-lg px-3 py-2 text-left hover:bg-[var(--accent-soft)]" onClick={() => importRef.current?.click()}><Upload size={12} className="mr-2 inline" />导入 JSON</button><button type="button" className="block w-full rounded-lg px-3 py-2 text-left hover:bg-[var(--accent-soft)]" onClick={() => void archive()}>归档</button><button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-[var(--danger)] hover:bg-[var(--danger-bg)]" onClick={() => void remove()}>删除</button></div>}<input ref={importRef} type="file" accept="application/json" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importJson(file); event.target.value = ""; }} /></div>
       </header>
       <div className="scrollbar flex-1 overflow-y-auto px-4 py-8 sm:px-6"><div className="mx-auto max-w-3xl space-y-7">
-        {events.length === 0 && !pendingUser ? <div className="py-20 text-center"><Sparkles className="mx-auto mb-4 text-[var(--accent)]" size={22} /><h2 className="text-lg font-semibold">从一个还没想清楚的地方开始</h2><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--muted)]">可以是一句直觉、一个反复出现的问题，或一段最近的经历。不需要先把它说完整。</p></div> : events.map((event) => <MessageCard key={event.id} event={event} node={nodeByEvent.get(event.id)} sessionId={id} onDone={setBundle} onFollowUp={send} />)}
+        {events.length === 0 && !pendingUser ? <div className="py-20 text-center"><Sparkles className="mx-auto mb-4 text-[var(--accent)]" size={22} /><h2 className="text-lg font-semibold">从一个还没想清楚的地方开始</h2><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--muted)]">可以是一句直觉、一个反复出现的问题，或一段最近的经历。不需要先把它说完整。</p></div> : events.map((event) => <MessageCard key={event.id} event={event} node={nodeByEvent.get(event.id)} sessionId={id} onDone={setBundle} />)}
         {pendingUser && <div className="flex justify-end"><div className="max-w-[88%] rounded-2xl rounded-tr-sm bg-[var(--ink)] px-4 py-3 text-sm leading-7 text-[var(--paper)]">{pendingUser}</div></div>}
         {isSending && <div className="flex items-start gap-2 text-xs text-[var(--muted)]"><span className="mt-1 flex gap-1"><i className="size-1.5 animate-pulse rounded-full bg-[var(--accent)]" /><i className="size-1.5 animate-pulse rounded-full bg-[var(--accent)] [animation-delay:150ms]" /><i className="size-1.5 animate-pulse rounded-full bg-[var(--accent)] [animation-delay:300ms]" /></span><span>{streamText || "正在形成一次短介入…"}</span></div>}
       </div></div>
-      <div className="border-t border-[var(--line)] bg-[var(--surface)] px-4 py-4 sm:px-6"><div className="mx-auto max-w-3xl">{error && <p className="mb-2 text-xs text-[var(--danger)]">{error}</p>}<div className="mb-2 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><select aria-label="选择认知功能" value={requestedFunction} onChange={(event) => setRequestedFunction(event.target.value as CognitiveFunction | "")} className="max-w-[180px] rounded-md border border-[var(--line)] bg-transparent px-2 py-1.5 text-xs text-[var(--muted)] outline-none"><option value="">自动选择认知功能</option>{(Object.keys(functionNames) as CognitiveFunction[]).map((key) => <option key={key} value={key}>@{functionNames[key]}</option>)}</select></div><span className="text-[10px] text-[var(--muted)]">{modeLabel}</span></div><AssistantComposer onSend={send} onStop={stop} disabled={isSending} /><div className="mt-2 flex items-center justify-between text-[10px] text-[var(--muted)]"><span className="flex items-center gap-1"><MessageCircle size={12} />你是思想的最终解释者</span><a className="flex items-center gap-1 hover:text-[var(--ink)]" href={`/api/sessions/${id}/export?format=md`}><Download size={12} />导出 Markdown</a></div></div></div>
+      <div className="border-t border-[var(--line)] bg-[var(--surface)] px-4 py-4 sm:px-6"><div className="mx-auto max-w-3xl">{error && <p className="mb-2 text-xs text-[var(--danger)]">{error}</p>}{retryText && retryRequestId && <Button size="sm" variant="secondary" className="mb-2" onClick={() => void send(retryText, retryRequestId)}>用同一条表达重试</Button>}<div className="mb-2 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><select aria-label="选择认知功能" value={requestedFunction} onChange={(event) => setRequestedFunction(event.target.value as CognitiveFunction | "")} className="max-w-[180px] rounded-md border border-[var(--line)] bg-transparent px-2 py-1.5 text-xs text-[var(--muted)] outline-none"><option value="">自动选择认知功能</option>{(Object.keys(functionNames) as CognitiveFunction[]).map((key) => <option key={key} value={key}>@{functionNames[key]}</option>)}</select></div><span className="text-right text-[10px] text-[var(--muted)]">{modeLabel} · {runtimeLabel}</span></div><AssistantComposer onSend={send} onStop={stop} disabled={isSending} /><div className="mt-2 flex items-center justify-between text-[10px] text-[var(--muted)]"><span className="flex items-center gap-1"><MessageCircle size={12} />你是思想的最终解释者</span><a className="flex items-center gap-1 hover:text-[var(--ink)]" href={`/api/sessions/${id}/export?format=md`}><Download size={12} />导出 Markdown</a></div></div></div>
     </main>
     <aside className="right-panel min-h-screen overflow-y-auto p-5">{showMap ? <MapPanel bundle={bundle} onBack={() => setShowMap(false)} onFocusNode={(nodeId) => void focusNode(nodeId)} onRequestFunction={(name) => { setRequestedFunction(name); setShowMap(false); }} /> : <InsightPanel bundle={bundle} accepted={accepted} candidates={candidates} openQuestions={openQuestions} onMap={() => setShowMap(true)} />}</aside>
     {showMap && <div className="map-overlay"><MapPanel bundle={bundle} onBack={() => setShowMap(false)} onFocusNode={(nodeId) => void focusNode(nodeId)} onRequestFunction={(name) => { setRequestedFunction(name); setShowMap(false); }} /></div>}

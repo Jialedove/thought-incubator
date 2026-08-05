@@ -5,13 +5,13 @@ const includes = (text: string, words: string[]) => words.some((word) => text.in
 
 export function classifyUserAction(text: string, bundle?: SessionBundle): UserMove {
   const trimmed = text.trim();
-  const candidate = bundle?.nodes.find((node) => node.confirmable && node.epistemicStatus === "ai_proposal");
-  const openQuestion = bundle?.nodes.some((node) => node.type === "open_question" && node.epistemicStatus !== "user_rejected");
+  const candidate = bundle?.nodes.find((node) => node.confirmable && node.epistemicStatus === "ai_proposal" && node.candidateReviewStatus === "pending");
+  const openQuestion = bundle?.nodes.some((node) => node.type === "open_question" && !isOpenQuestionResolved(bundle, node.id) && node.epistemicStatus !== "user_rejected");
   const kind: UserMoveKind =
-    includes(trimmed, ["接受", "准确表达", "我认同", "同意这个候选"]) ? "accept_candidate" :
     includes(trimmed, ["部分接受", "部分准确", "一半对", "但我想改"]) ? "partially_accept" :
     includes(trimmed, ["误解", "不是这个意思", "不对", "纠正"]) ? "correct_candidate" :
     includes(trimmed, ["拒绝", "不要这个解释"]) ? "reject_interpretation" :
+    includes(trimmed, ["接受", "准确表达", "我认同", "同意这个候选"]) ? "accept_candidate" :
     includes(trimmed, ["挑战", "反例", "哪里不对", "边界"]) ? "request_challenge" :
     includes(trimmed, ["延展", "再往前", "还有什么可能"]) ? "request_extension" :
     includes(trimmed, ["连接", "关联", "联系起来"]) ? "request_connection" :
@@ -19,7 +19,8 @@ export function classifyUserAction(text: string, bundle?: SessionBundle): UserMo
     includes(trimmed, ["多视角", "不同角度", "另一种看法"]) ? "request_multi_perspective" :
     includes(trimmed, ["总结", "临时总结", "整理一下"]) ? "request_summary" :
     includes(trimmed, ["切换焦点", "换个念头", "另一个分支"]) ? "switch_focus" :
-    includes(trimmed, ["例子", "举例", "经历", "具体场景"]) ? "give_example" :
+    includes(trimmed, ["请举", "给我一个例子", "能否举", "请给个例子"]) ? "request_example" :
+    includes(trimmed, ["比如", "例如", "我举", "我的经历", "发生过", "具体场景"]) ? "give_example" :
     includes(trimmed, ["澄清", "概念", "到底是什么意思", "定义"]) ? "clarify_concept" :
     includes(trimmed, ["改成", "更准确", "其实", "我想修订", "重新说"]) ? "revise_view" :
     openQuestion && includes(trimmed, ["因为", "所以", "我的答案", "回答", "是"]) ? "answer_question" :
@@ -38,8 +39,12 @@ const purpose: Record<CognitiveFunction, string> = {
 const requestedFunctionForMove: Partial<Record<UserMoveKind, CognitiveFunction>> = {
   request_challenge: "challenge", request_extension: "extend", request_connection: "connect",
   request_reformulation: "reformulate", request_summary: "record", give_example: "ground",
-  clarify_concept: "clarify", request_multi_perspective: "distinguish",
+  request_example: "ground", clarify_concept: "clarify", request_multi_perspective: "distinguish",
 };
+
+export function isOpenQuestionResolved(bundle: SessionBundle, nodeId: string) {
+  return bundle.edges.some((edge) => edge.sourceNodeId === nodeId && edge.type === "answers");
+}
 
 function latestFunction(bundle: SessionBundle) {
   return [...bundle.events].reverse().find((event) => event.cognitiveFunction)?.cognitiveFunction ?? null;
@@ -47,8 +52,8 @@ function latestFunction(bundle: SessionBundle) {
 
 export function chooseIntervention(bundle: SessionBundle, requestedFunction?: CognitiveFunction | null, move?: UserMove): InterventionDecision {
   const nodes = bundle.nodes;
-  const unresolved = nodes.filter((node) => node.type === "open_question" && node.epistemicStatus !== "user_rejected");
-  const candidates = nodes.filter((node) => node.confirmable && node.epistemicStatus === "ai_proposal");
+  const unresolved = nodes.filter((node) => node.type === "open_question" && !isOpenQuestionResolved(bundle, node.id) && node.epistemicStatus !== "user_rejected");
+  const candidates = nodes.filter((node) => node.confirmable && node.epistemicStatus === "ai_proposal" && node.candidateReviewStatus === "pending");
   const original = nodes.find((node) => node.type === "original_expression");
   const latest = latestFunction(bundle);
   const automatic = move ? requestedFunctionForMove[move.kind] : undefined;

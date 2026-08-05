@@ -8,7 +8,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     env:
-      DATABASE_PATH: ./data/ci.db
+      DATABASE_PATH: ${{ runner.temp }}/thought-incubator-ci-${{ github.run_id }}.db
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -28,7 +28,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     env:
-      DATABASE_PATH: ./data/e2e.db
+      DATABASE_PATH: ${{ runner.temp }}/thought-incubator-e2e-${{ github.run_id }}.db
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

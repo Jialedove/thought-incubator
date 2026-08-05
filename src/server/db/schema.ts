@@ -22,6 +22,7 @@ export const thoughtNodes = sqliteTable("thought_nodes", {
   speechAct: text("speech_act"),
   confirmable: integer("confirmable", { mode: "boolean" }).notNull().default(false),
   provenanceNodeId: text("provenance_node_id"),
+  candidateReviewStatus: text("candidate_review_status"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -57,8 +58,24 @@ export const providerConfigs = sqliteTable("provider_configs", {
   apiKeyLast4: text("api_key_last4"),
   headers: text("headers").notNull(),
   headersCiphertext: text("headers_ciphertext"),
+  credentialStatus: text("credential_status").notNull().default("not_configured"),
+  lastTestedAt: integer("last_tested_at"),
+  lastTestStatus: text("last_test_status"),
+  lastTestErrorCode: text("last_test_error_code"),
   enabled: integer("enabled", { mode: "boolean" }).notNull(),
   isDefault: integer("is_default", { mode: "boolean" }).notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+export const modelConfigs = sqliteTable("model_configs", {
+  id: text("id").primaryKey(),
+  providerId: text("provider_id").notNull().references(() => providerConfigs.id, { onDelete: "cascade" }),
+  modelId: text("model_id").notNull(),
+  displayName: text("display_name").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  source: text("source").notNull().default("manual"),
+  capabilities: text("capabilities").notNull().default("{}"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -67,6 +84,7 @@ export const cognitiveFunctionModels = sqliteTable("cognitive_function_models", 
   cognitiveFunction: text("cognitive_function").notNull().unique(),
   providerId: text("provider_id").references(() => providerConfigs.id, { onDelete: "set null" }),
   modelId: text("model_id"),
+  modelConfigId: text("model_config_id").references(() => modelConfigs.id, { onDelete: "set null" }),
   updatedAt: integer("updated_at").notNull(),
 });
 export const appSettings = sqliteTable("app_settings", {
@@ -77,7 +95,7 @@ export const appSettings = sqliteTable("app_settings", {
 export const interventionRuns = sqliteTable("intervention_runs", {
   id: text("id").primaryKey(),
   sessionId: text("session_id").notNull().references(() => thoughtSessions.id, { onDelete: "cascade" }),
-  eventId: text("event_id"), providerId: text("provider_id"), modelId: text("model_id"),
+  eventId: text("event_id"), providerId: text("provider_id"), modelId: text("model_id"), modelConfigId: text("model_config_id"),
   mode: text("mode").notNull(), status: text("status").notNull(), errorMessage: text("error_message"),
   startedAt: integer("started_at").notNull(), completedAt: integer("completed_at"),
 });

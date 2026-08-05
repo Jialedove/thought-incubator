@@ -10,7 +10,8 @@ const emptyBundle: SessionBundle = {
 describe("思想孵化协议", () => {
   it("校验并分类用户动作", () => {
     expect(classifyUserAction("我想看看这个想法的反例").kind).toBe("request_challenge");
-    expect(classifyUserAction("请举一个具体例子").kind).toBe("give_example");
+    expect(classifyUserAction("请举一个具体例子").kind).toBe("request_example");
+    expect(classifyUserAction("我举个最近发生的例子").kind).toBe("give_example");
     expect(classifyUserAction("其实我想修订这个说法").kind).toBe("revise_view");
     expect(classifyUserAction("请把两个念头连接起来").kind).toBe("request_connection");
     expect(classifyUserAction("换个说法").kind).toBe("request_reformulation");

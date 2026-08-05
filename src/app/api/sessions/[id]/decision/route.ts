@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { decisionActionSchema } from "@/domain/schemas";
+import { errorPayload } from "@/server/errors";
 import { decideNode } from "@/server/repository";
 import { localMutationAllowed } from "@/server/request-guard";
 
@@ -13,6 +14,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     return NextResponse.json({ bundle: decideNode(id, parsed.data.nodeId, parsed.data.action, parsed.data.note, parsed.data.content) });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "状态更新失败" }, { status: 400 });
+    return NextResponse.json(errorPayload(error, "状态更新失败"), { status: 400 });
   }
 }

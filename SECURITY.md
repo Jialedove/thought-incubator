@@ -2,7 +2,9 @@
 
 请不要在公开 Issue 中提交 API Key、数据库文件或包含私密思想内容的导出文件。
 
-API Key 和自定义秘密 Header 只在服务端使用，并以 AES-GCM 加密后存储在 SQLite 的 `provider_configs` 密文字段；主密钥默认为 `data/.master-key`，也可由 `MODEL_ENCRYPTION_KEY` 提供。列表 API 只返回掩码，不返回明文。
+API Key 和自定义秘密 Header 只在服务端使用，并以 AES-GCM 加密后存储在 SQLite 的 `provider_configs` 密文字段；主密钥默认为 `data/.master-key`，也可由 `MODEL_ENCRYPTION_KEY` 提供。列表 API 只返回“已设置”和末四位掩码，不返回明文。编辑时默认保留现有密钥，只有明确替换或清除才会改变密文。
+
+模型配置（Model ID、显示名、能力和启停状态）与 Provider 凭据分开存储。模型发现、连接测试和真实介入都在服务端执行；模型列表与运行记录不会保存 API Key、完整 Prompt 或密钥 Header。
 
 应用默认只监听 `127.0.0.1:3001`。只有显式设置 `ALLOW_LAN=1` 才绑定 `0.0.0.0`；这只改变网络边界，不提供身份认证，请在受信任网络中使用并自行配置访问控制。不要把开发服务器直接暴露到公网。
 
