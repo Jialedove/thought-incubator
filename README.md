@@ -7,13 +7,14 @@
 ## 功能
 
 - 三栏思想工作台：会话、共同思考、思想演化。
-- 确定性的本地 Mock Provider：没有 API Key 也能体验和跑 E2E。
+- 确定性的本地 Mock Provider：没有 API Key 也能体验和跑 E2E；配置真实 Provider 后会进入主会话。
 - 思想节点、认识论状态、边关系和真实交互事件持久化到 SQLite。
 - 用户确认、部分接受、误解和拒绝会真实改变节点状态。
 - 当前思想摘要和 React Flow 思想地图。
 - Markdown / JSON 导出。
-- OpenAI、Anthropic、Google Generative AI、OpenAI-compatible 和本地模拟模型设置。
-- API Key 服务端使用、本地 AES-GCM 加密、浏览器只看到掩码。
+- Provider 与 Model 分离设置：一个 Provider 可管理多个模型，支持发现、手动添加、启停、测试和唯一全局默认模型。
+- OpenAI、Anthropic、Google Generative AI、OpenAI-compatible 和本地模拟模型适配器。
+- API Key 与秘密 Headers 服务端使用、本地 AES-GCM 加密、浏览器只看到掩码。
 - 简体中文、键盘操作、浅色/深色/跟随系统设置。
 
 ## 界面截图
@@ -28,7 +29,9 @@
     pnpm db:migrate
     pnpm dev
 
-浏览器打开 http://localhost:3001（本机 Plane 占用 3000）。没有供应商时可直接进入演示模式；真实模型在“设置 → 模型服务”中配置。
+浏览器打开 http://localhost:3001（本机 Plane 占用 3000）。首次使用会自动建立明确的本地演示 Provider；真实模型在“设置 → 模型服务”中配置。真实配置缺失或不可用时不会静默回退到 Mock，会返回可行动的错误码。
+
+默认只绑定 `127.0.0.1`。只有在受信任局域网中明确设置 `ALLOW_LAN=1` 才会绑定 `0.0.0.0`；这不会增加身份认证，请自行承担局域网访问风险。
 
 ## 检查
 
@@ -45,21 +48,21 @@
 ## 目录结构
 
     src/domain       类型、Zod Schema、思想孵化协议
-    src/server       Drizzle/SQLite、仓库、模型 Provider Registry
+    src/server       Drizzle/SQLite、仓库、上下文构建器、模型 Provider Registry
     src/app          App Router 页面与 API Route
     src/components   工作台、思想地图和 UI primitives
     drizzle          SQLite Migration
     docs             原则、架构、数据模型与隐私说明
 
-## 当前限制
+## 运行说明
 
-- 第一版前台默认使用本地 Mock Provider；真实供应商连接测试和 Provider Registry 已接入，但会话消息编排暂时仍使用 Mock 介入模板。
-- 多视角入口和完整的编辑/分支交互还未开放；当前协议和数据模型已为这些操作保留字段。
-- 深色主题保存了用户偏好，界面基础色板仍以浅色为主。
-
-## 后续路线
-
-接入真实模型的结构化输出与流式渲染、开放多视角介入、完善分支操作与节点来源查看、增加导入 JSON 的用户界面。
+- 真实模型使用 AI SDK 的结构化输出，服务端 Zod 校验后才写入思想节点；模型不可用时会保留用户消息并显示稳定错误，不会写入半成品候选。
+- 每次真实介入按“认知功能映射 → 已启用 Model → 全局默认 Model”解析，并把实际 Provider、Model 和运行状态写入 `intervention_runs`。
+- ThoughtContextBuilder 只向模型提供当前输入、当前焦点、相关节点、关系、近期事件、已接受观点、待审阅候选和真正未解决的问题；它不会引入 AI 人格或多角色讨论。
+- API Key 支持保留、替换和清除；浏览器只看到“已设置”和末四位掩码。模型发现使用各 Provider 的模型列表接口，手动添加作为兜底。
+- 每轮支持停止生成；停止只保留用户表达，刷新后仍可继续。
+- 候选接受、部分接受、纠正和拒绝都建立独立用户节点并保留 AI 候选 provenance，不使用自环。
+- 数据库迁移按 `drizzle/0000_*.sql`、`drizzle/0001_*.sql`、`drizzle/0002_*.sql` 顺序执行，不需要删除已有 `data/`。
 
 ## 开源
 

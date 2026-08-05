@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 const buttonVariants = cva("inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-45", {
   variants: {
     variant: {
-      primary: "bg-[var(--ink)] text-[#f4f4f0] hover:bg-[var(--ink-soft)]",
+      primary: "bg-[var(--ink)] text-[var(--paper)] hover:bg-[var(--ink-soft)]",
       secondary: "border border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)] hover:bg-[var(--surface-raised)]",
       ghost: "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]",
       danger: "border border-[var(--danger-line)] text-[var(--danger)] hover:bg-[var(--danger-bg)]",

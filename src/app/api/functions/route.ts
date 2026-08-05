@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
-import { cognitiveFunctionSchema } from "@/domain/schemas";
-import { listFunctionModels, saveFunctionModel } from "@/server/repository";
+import { functionModelsSchema } from "@/domain/schemas";
+import { errorPayload } from "@/server/errors";
+import { listFunctionModels, listModels, listProviders, saveFunctionModels } from "@/server/repository";
+import { localMutationAllowed } from "@/server/request-guard";
 
 export const runtime = "nodejs";
 
 export function GET() {
-  return NextResponse.json({ models: listFunctionModels() });
+  return NextResponse.json({ models: listFunctionModels(), providers: listProviders(), availableModels: listModels() });
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({})) as { cognitiveFunction?: string; providerId?: string | null; modelId?: string | null };
-  const parsed = cognitiveFunctionSchema.safeParse(body.cognitiveFunction);
-  if (!parsed.success) return NextResponse.json({ error: "认知功能无效" }, { status: 400 });
-  return NextResponse.json({ models: saveFunctionModel(parsed.data, body.providerId ?? null, body.modelId ?? null) });
+  if (!localMutationAllowed(request)) return NextResponse.json({ error: "只允许本机请求" }, { status: 403 });
+  const parsed = functionModelsSchema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ ...errorPayload(new Error("认知功能分配无效")), fieldErrors: Object.fromEntries(parsed.error.issues.map((issue) => [String(issue.path.join(".") || "form"), issue.message])) }, { status: 400 });
+  try { return NextResponse.json({ models: saveFunctionModels(parsed.data.models) }); }
+  catch (error) { return NextResponse.json(errorPayload(error, "认知功能分配保存失败"), { status: 400 }); }
 }

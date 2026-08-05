@@ -1,28 +1,35 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
-import { streamText } from "ai";
-import type { SafeProviderConfig } from "@/domain/types";
-import { getProviderSecret } from "../repository";
+import { adapterFor, getProviderAdapter, setProviderAdapter, streamWithAdapter } from "./adapters";
+import type { FakeProviderAdapter, ModelDescriptor } from "./types";
+import { ProviderError } from "../errors";
+import { getProviderForFunction, getProviderSecret, getProviderConnection, getRuntimeProviderForModel, recordProviderTest, type RuntimeProvider } from "../repository";
+import type { InterventionDecision } from "@/domain/types";
 
-export async function testProviderConnection(providerId: string) {
-  const provider = getProviderSecret(providerId);
-  if (!provider) return { ok: false, message: "供应商不存在或已停用" };
-  if (provider.kind === "mock") return { ok: true, message: "演示模式已就绪，不访问外部网络" };
-  if (!provider.apiKey || !provider.modelId) return { ok: false, message: "请填写 API Key 和 Model ID" };
-  try {
-    const model = createLanguageModel(provider);
-    const result = await streamText({ model, prompt: "Return only OK.", maxOutputTokens: 5 });
-    const text = await result.text;
-    return { ok: Boolean(text.trim()), message: text.trim() ? "连接成功" : "模型返回空内容" };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message.replace(/sk-[A-Za-z0-9_-]+/g, "[已脱敏]") : "连接失败" };
-  }
+export { getProviderForFunction, getProviderAdapter, setProviderAdapter, adapterFor };
+export type { FakeProviderAdapter, ModelDescriptor };
+
+export async function streamIntervention(provider: RuntimeProvider, decision: InterventionDecision, context: string, onDelta?: (value: string) => void, abortSignal?: AbortSignal) {
+  return streamWithAdapter({ provider, decision, context, onDelta, abortSignal });
 }
 
-function createLanguageModel(provider: SafeProviderConfig & { apiKey: string }) {
-  const options = { apiKey: provider.apiKey, headers: provider.headers };
-  if (provider.kind === "anthropic") return createAnthropic(options)(provider.modelId ?? "");
-  if (provider.kind === "google") return createGoogleGenerativeAI(options)(provider.modelId ?? "");
-  return createOpenAI({ ...options, baseURL: provider.baseUrl ?? undefined })(provider.modelId ?? "");
+export async function discoverModels(providerId: string, abortSignal?: AbortSignal) {
+  const provider = getProviderConnection(providerId);
+  if (!provider) throw new ProviderError("PROVIDER_NOT_FOUND", "供应商不存在或已停用");
+  if (!provider.apiKey && provider.kind !== "mock") throw new ProviderError("CREDENTIAL_MISSING", "请先保存 API Key");
+  return adapterFor(provider.kind).listModels(provider, abortSignal);
+}
+
+export async function testProviderConnection(providerId: string, modelConfigId?: string, abortSignal?: AbortSignal) {
+  const connection = getProviderConnection(providerId);
+  if (!connection) return { ok: false, message: "供应商不存在、已停用或凭据不可读", code: "PROVIDER_NOT_FOUND" };
+  try {
+    const runtime = modelConfigId ? getRuntimeProviderForModel(modelConfigId) : null;
+    if (modelConfigId && (!runtime || runtime.id !== providerId)) return { ok: false, message: "模型不属于当前 Provider", code: "MODEL_NOT_FOUND" };
+    const result = runtime ? await adapterFor(runtime.kind).testModel(runtime, abortSignal) : await adapterFor(connection.kind).testConnection(connection, abortSignal);
+    recordProviderTest(providerId, result);
+    return result;
+  } catch (error) {
+    const result = { ok: false, message: error instanceof Error ? error.message : "连接测试失败", code: error instanceof ProviderError ? error.code : "CONNECTION_FAILED" } as const;
+    recordProviderTest(providerId, result);
+    return result;
+  }
 }
